@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.10-management
+    container_name: rabbitmq-broker
+    hostname: rabbitmq-server
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin_password
+      - RABBITMQ_ERLANG_COOKIE=SWQOKODSQALRPCLNMEQG
+    ports:
+      - "5672:5672"    # RabbitMQ standard port
+      - "15672:15672"  # Management UI
+      - "1883:1883"    # MQTT port (optional)
+      - "15675:15675"  # MQTT over WebSockets (optional)
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+    networks:
+      - rabbitmq-network
+
+  # Optional: monitoring tools
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    depends_on:
+      - rabbitmq
+    networks:
+      - rabbitmq-network
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - rabbitmq-network
+
+  # Python application services
+  consumer:
+    build:
+      context: ./app
+    container_name: rabbitmq-consumer
+    restart: unless-stopped
+    command: python consumer.py
+    environment:
+      - RABBITMQ_HOST=rabbitmq-broker
+    depends_on:
+      - rabbitmq
+    networks:
+      - rabbitmq-network
+
+  producer:
+    build:
+      context: ./app
+    container_name: rabbitmq-producer
+    restart: "no"
+    command: python producer.py
+    environment:
+      - RABBITMQ_HOST=rabbitmq-broker
+    depends_on:
+      - rabbitmq
+      - consumer
+    networks:
+      - rabbitmq-network
+
+volumes:
+  rabbitmq-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  rabbitmq-network:
+    driver: bridge
