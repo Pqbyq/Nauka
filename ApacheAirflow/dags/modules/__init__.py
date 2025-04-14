@@ -1,0 +1,3 @@
+"""
+Plik inicjalizacyjny pakietu modules
+"""
